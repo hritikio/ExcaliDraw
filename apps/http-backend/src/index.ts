@@ -2,9 +2,11 @@
 import express, { Request, Response, NextFunction } from "express";
 import { signInSchema, signUpSchema } from "./schema/auth";
 import jwt from "jsonwebtoken"
-import dotenv from "dotenv"
+// import {JWT_SECRET} from "@repo/backend-common";
+import dotenv from "dotenv";
+dotenv.config();
+
 import middleware from "./middleware";
-dotenv.config()
 
 
 const app = express();
@@ -17,14 +19,8 @@ app.get("/", (req: Request, res: Response) => {
   res.json({ message: "Server is running" });
 });
 
-const result = signUpSchema.safeParse({
-  name: "Hritik",
-  email: "test@test.com",
-  password: "123456",
-});
 
-console.log(result);
-console.log(process.env.JWT_SECRET);
+console.log("here is httpbackednjet ",process.env.JWT_SECRET);
 
 // app.use("/",)
 
@@ -58,6 +54,7 @@ app.post("/signin", (req: Request, res: Response) => {
   } else {
     //add bcrypt and database logic here
     const { email } = result.data;
+    //@ts-ignore
     const token = jwt.sign(userId,process.env.JWT_SECRET as string,{expiresIn:'7d'});
      console.log(token);
     res.status(200).json({ message: "User signed in successfully",token });
