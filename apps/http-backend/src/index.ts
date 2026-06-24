@@ -2,7 +2,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import { signInSchema, signUpSchema ,createRoomSchema} from "./schema/auth";
 import jwt from "jsonwebtoken"
-// import {JWT_SECRET} from "@repo/backend-common";
 import { prismaClient } from "@repo/db/client";
 import dotenv from "dotenv";
 dotenv.config();
@@ -12,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
-// Health check
+
 app.get("/", (req: Request, res: Response) => {
   res.json({ message: "Server is running" });
 });
@@ -20,7 +19,6 @@ app.get("/", (req: Request, res: Response) => {
 
 console.log("here is httpbackend jwt ",process.env.JWT_SECRET);
 
-// app.use("/",)
 
 app.post("/signup", async (req: Request, res: Response) => {
   const result = signUpSchema.safeParse(req.body);
