@@ -11,5 +11,9 @@ export const signInSchema = z.object({
   password: z.string().min(3, "password is too short").max(20),
 }).strict();
 
+export const createRoomSchema=z.object({
+  roomName:z.string().min(3).max(25)
+})
+
 export type SignUpInput = z.infer<typeof signUpSchema>;
 export type SignInInput = z.infer<typeof signInSchema>;

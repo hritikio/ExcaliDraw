@@ -30,15 +30,16 @@ model User{
 
 model Room{
   id            Int      @id @default(autoincrement())
-  slug          String   @unique //name -of-room-in-short
-  createdAt     DateTime @default(now())
+  slug          String   @unique //name -of-room-in-short 
   adminId       String
-  admin         User     @relation(fields: [adminId], references: [id])
   chats         Chat[]
- 
+  admin         User     @relation(fields: [adminId], references: [id])
+  createdAt     DateTime @default(now())
 
 
 }
+
+
 
 model Chat{
   id            Int     @id @default(autoincrement())

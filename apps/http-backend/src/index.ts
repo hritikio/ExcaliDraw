@@ -1,12 +1,13 @@
 // src/index.ts
 import express, { Request, Response, NextFunction } from "express";
-import { signInSchema, signUpSchema } from "./schema/auth";
+import { signInSchema, signUpSchema ,createRoomSchema} from "./schema/auth";
 import jwt from "jsonwebtoken"
 // import {JWT_SECRET} from "@repo/backend-common";
 import { prismaClient } from "@repo/db/client";
 import dotenv from "dotenv";
 dotenv.config();
 import middleware from "./middleware";
+import bcrypt from "bcrypt"
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -26,21 +27,23 @@ app.post("/signup", async (req: Request, res: Response) => {
 
   if (!result.success) {
     //if result fails
-    res.status(400).json({
+    return res.status(400).json({
       message: "Invalid request data",
-      errors: result.error.format(),
+      errors: result.error.format,
     });
   } else {
     //if result is success
     try {
+      const hashedPassword = await bcrypt.hash(result.data.password,10);
+      console.log("hashedPassword",hashedPassword);
       const user = await prismaClient.user.create({
         data: {
           name: result.data.name,
           email: result.data.email,
-          password: result.data.password,
+          password: hashedPassword,
         },
       });
-      res.status(200).json({ message: "User signed up successfully " ,user });
+      res.status(200).json({ message: "User signed up successfully " ,userId:user.id });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Internal server error" });
@@ -48,27 +51,81 @@ app.post("/signup", async (req: Request, res: Response) => {
   }
 });
 
-app.post("/signin", (req: Request, res: Response) => {
+app.post("/signin",async  (req: Request, res: Response) => {
 
   const result = signInSchema.safeParse(req.body);
 
   if (!result.success) {
-    res.status(400).json({
+    return res.status(400).json({
       message: "Invalid request data",
       errors: result.error.format(),
     });
   } else {
     //add bcrypt and database logic here
-    const { email } = result.data;
-    //@ts-ignore
-    const token = jwt.sign(userId,process.env.JWT_SECRET as string,{expiresIn:'7d'});
-     console.log(token);
+    const { email ,password} = result.data;
+    const user = await prismaClient.user.findFirst({
+      where:{
+        email   // find that user by email 
+      }
+    })
+    
+
+    
+    if(typeof user?.password =="undefined" || !user) {
+      return res.status(400).json({ message: "Invalid password or user doesnt exist" });
+    }
+    //now check if our pass matches the hash pass 
+    const isPasswordCorrect= await bcrypt.compare(password,user.password)
+
+    if(!isPasswordCorrect){
+      // password is wrong 
+      return res.status(403).json({
+        msg:"Incorrect password "
+      })
+    }
+    console.log(`the user for sign in is  `,user);
+    //password is correct 
+    const userId= user.id
+
+    const token = await jwt.sign({userId},process.env.JWT_SECRET as string,{expiresIn:"7d"});
+     console.log("your jwt token is ",token);
     res.status(200).json({ message: "User signed in successfully",token });
   }
 });
 
-app.post("/room", middleware,(req: Request, res: Response) => {
-  res.json({ roomId: 123 });
+app.post("/room", middleware,async (req: Request, res: Response) => {
+  const result = createRoomSchema.safeParse(req.body);
+   if (!result.success) {
+    //if result fails
+    return  res.status(400).json({
+      message: "Invalid Room data",
+      errors: result.error.format(),
+    });
+  }
+
+  const userId= req.userId
+
+  if(!userId){
+    return res.status(400).json({
+      msg:"user doesnt exist "
+    })
+  }
+  try{
+  const room = await prismaClient.room.create({
+      data:{
+        slug:result.data.roomName,
+        adminId:userId
+        
+      }
+  })
+  res.json({ msg:"Room created",roomId:room.id });
+}
+catch(e){
+  return res.status(500).json({
+    msg:"Same RoomId cant be created  "
+  })
+}
+  
 });
 
 app.listen(PORT, () => {
