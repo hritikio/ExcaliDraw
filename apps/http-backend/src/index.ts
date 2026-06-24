@@ -3,6 +3,7 @@ import express, { Request, Response, NextFunction } from "express";
 import { signInSchema, signUpSchema } from "./schema/auth";
 import jwt from "jsonwebtoken"
 // import {JWT_SECRET} from "@repo/backend-common";
+import {prismaClient} from "@repo/db/client";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -20,11 +21,11 @@ app.get("/", (req: Request, res: Response) => {
 });
 
 
-console.log("here is httpbackednjet ",process.env.JWT_SECRET);
+console.log("here is httpbackend jwt ",process.env.JWT_SECRET);
 
 // app.use("/",)
 
-app.post("/signup", (req: Request, res: Response) => {
+app.post("/signup", async (req: Request, res: Response) => {
   const result = signUpSchema.safeParse(req.body);
 
   if (!result.success) {
@@ -35,10 +36,19 @@ app.post("/signup", (req: Request, res: Response) => {
     });
   } else {
     //if result is success
-    
-    res.status(200).json({ message: "User signed up successfully "});
-    //add bcrypt and database logic here
-
+    try {
+      await prismaClient.user.create({
+        data: {
+          name: result.data.name,
+          email: result.data.email,
+          password: result.data.password,
+        },
+      });
+      res.status(200).json({ message: "User signed up successfully " });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Internal server error" });
+    }
   }
 });
 
