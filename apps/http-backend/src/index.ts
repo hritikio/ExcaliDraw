@@ -3,18 +3,14 @@ import express, { Request, Response, NextFunction } from "express";
 import { signInSchema, signUpSchema } from "./schema/auth";
 import jwt from "jsonwebtoken"
 // import {JWT_SECRET} from "@repo/backend-common";
-import {prismaClient} from "@repo/db/client";
+import { prismaClient } from "@repo/db/client";
 import dotenv from "dotenv";
 dotenv.config();
-
 import middleware from "./middleware";
-
-
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
-
 // Health check
 app.get("/", (req: Request, res: Response) => {
   res.json({ message: "Server is running" });
@@ -37,14 +33,14 @@ app.post("/signup", async (req: Request, res: Response) => {
   } else {
     //if result is success
     try {
-      await prismaClient.user.create({
+      const user = await prismaClient.user.create({
         data: {
           name: result.data.name,
           email: result.data.email,
           password: result.data.password,
         },
       });
-      res.status(200).json({ message: "User signed up successfully " });
+      res.status(200).json({ message: "User signed up successfully " ,user });
     } catch (error) {
       console.error(error);
       res.status(500).json({ message: "Internal server error" });
