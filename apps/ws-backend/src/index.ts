@@ -26,7 +26,7 @@ function checkUser(token: string): string | null {
 
     return decoded.userId;
   } catch (e) {
-    console.log('error is',e);
+    console.log("error is", e);
     return null;
   }
 }
@@ -63,36 +63,58 @@ wss.on("connection", (ws: WebSocket, request) => {
 
   // if decode is valid then let user enter ws backend
   ws.on("message", (data) => {
-    const parsedData = JSON.parse(data as unknown as string); //    { type:"join_room"|"leave_room"|"chat",roomId:""iihuh,"message":"hello"}
-    if (parsedData.type === "join_room") {
-      const user = users.find((x) => x.ws === ws); // {userId:"anfbf",ws:websocket,room:"sjdj"}
-      user?.rooms.push(parsedData.roomId);
-      console.log(users)
-    }
+    try {
+      const parsedData = JSON.parse(data as unknown as string); //    { type:"join_room"|"leave_room"|"chat",roomId:""iihuh,"message":"hello"}
+      if (parsedData.type === "join_room") {
+        const user = users.find((x) => x.ws === ws); // {userId:"anfbf",ws:websocket,room:"sjdj"}
+        user?.rooms.push(parsedData.roomId);
+        console.log(users);
+      }
 
-    if (parsedData.type === "leave_room") {
-      const user = users.find((x) => x.ws === ws);
-      if (!user) return;
-      user.rooms = user.rooms.filter((x) => x !== parsedData.roomId); //the particulr room is now removed from users
-    }
+      if (parsedData.type === "leave_room") {
+        const user = users.find((x) => x.ws === ws);
+        if (!user) return;
+        user.rooms = user.rooms.filter((x) => x !== parsedData.roomId); //the particulr room is now removed from users
+      }
 
-    if (parsedData.type === "chat") {
-      const roomId = parsedData.roomId;
-      const message = parsedData.message;
-      users.forEach((user) => {
-        if (user.rooms.includes(roomId)) {
-          user.ws.send(
-            JSON.stringify({
-              type: "chat",
-              message,
-              roomId,
-            }),
-          );
+      if (parsedData.type === "chat") {
+        // if user send chat without joining room let him now join room
+        const user = users.find((x) => x.ws === ws);
+        if (!user) {
+          return ws.close(1008, "user doesnt exist ");
         }
-      });
-    }
 
-    ws.send(`${data} messaged recieved `);
+        const roomId = parsedData.roomId;
+        const message = parsedData.message;
+
+        if (!user.rooms.includes(roomId)) {
+          user.rooms.push(roomId);
+          console.log(`User ${user.userId} auto-joined room ${roomId}`);
+          console.log("users array is ", users);
+        }
+        users.forEach((u) => {
+          if (u.rooms.includes(roomId)) {
+            u.ws.send(
+              JSON.stringify({
+                type: "chat",
+                message,
+                roomId,
+              }),
+            );
+          }
+        });
+      }
+
+      ws.send(`${data} messaged recieved `);
+    } catch (err) {
+      console.error("Error handling message:", err);
+      ws.send(
+        JSON.stringify({
+          type: "error",
+          message: "Invalid message format",
+        }),
+      );
+    }
   });
 
   ws.on("close", () => {
