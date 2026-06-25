@@ -126,6 +126,28 @@ catch(e){
   
 });
 
+app.get("/chats/:roomId",middleware,async (req:Request,res:Response)=>{
+  const roomId = Number(req.params.roomId);
+  try{
+    const messages = await prismaClient.chat.findMany({
+      where:{
+        roomId
+      },
+      take:50
+    })
+
+    res.status(200).json({
+      messages
+    })
+  }
+  catch(e){
+    res.status(500).json({
+      err:e,
+      message:"error occured while fetching chats "
+    })
+  }
+})
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

@@ -2,6 +2,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import dotenv from "dotenv";
 dotenv.config();
+import { prismaClient } from "@repo/db/client";
+
 
 const wss = new WebSocketServer({ port: 8080 });
 
@@ -62,7 +64,7 @@ wss.on("connection", (ws: WebSocket, request) => {
   });
 
   // if decode is valid then let user enter ws backend
-  ws.on("message", (data) => {
+  ws.on("message", async (data) => {
     try {
       const parsedData = JSON.parse(data as unknown as string); //    { type:"join_room"|"leave_room"|"chat",roomId:""iihuh,"message":"hello"}
       if (parsedData.type === "join_room") {
@@ -92,6 +94,13 @@ wss.on("connection", (ws: WebSocket, request) => {
           console.log(`User ${user.userId} auto-joined room ${roomId}`);
           console.log("users array is ", users);
         }
+        await prismaClient.chat.create({
+          data:{
+            roomId,
+            message,
+            userId
+          }
+        })
         users.forEach((u) => {
           if (u.rooms.includes(roomId)) {
             u.ws.send(
@@ -116,6 +125,7 @@ wss.on("connection", (ws: WebSocket, request) => {
       );
     }
   });
+  
 
   ws.on("close", () => {
     console.log("Closing webSocket Server");
