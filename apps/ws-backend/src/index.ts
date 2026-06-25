@@ -69,7 +69,7 @@ wss.on("connection", (ws: WebSocket, request) => {
       const parsedData = JSON.parse(data as unknown as string); //    { type:"join_room"|"leave_room"|"chat",roomId:""iihuh,"message":"hello"}
       if (parsedData.type === "join_room") {
         const user = users.find((x) => x.ws === ws); // {userId:"anfbf",ws:websocket,room:"sjdj"}
-        user?.rooms.push(parsedData.roomId);
+        user?.rooms.push(parsedData);
         console.log(users);
       }
 
@@ -125,7 +125,7 @@ wss.on("connection", (ws: WebSocket, request) => {
       );
     }
   });
-  
+
 
   ws.on("close", () => {
     console.log("Closing webSocket Server");
