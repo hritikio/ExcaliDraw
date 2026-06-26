@@ -1,0 +1,165 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --color-cream: #fdfaf4;
+  --color-ink: #1a1a2e;
+  --color-accent: #6c63ff;
+  --color-accent-light: #a29bfe;
+  --color-warm: #f8f4ee;
+  --color-sketch: #2d3436;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: #fdfaf4;
+  color: #1a1a2e;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Rough sketch border utility */
+.sketch-border {
+  border: 2px solid #1a1a2e;
+  border-radius: 2px;
+  position: relative;
+}
+
+.sketch-border::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 1.5px solid rgba(26, 26, 46, 0.2);
+  border-radius: 3px;
+  transform: rotate(-0.5deg);
+  pointer-events: none;
+}
+
+/* Pencil underline */
+.pencil-underline {
+  position: relative;
+  display: inline-block;
+}
+
+.pencil-underline::after {
+  content: "";
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #6c63ff;
+  border-radius: 2px;
+  transform: rotate(-0.4deg) scaleX(1.02);
+}
+
+/* Hand-drawn card */
+.card-sketchy {
+  border: 2px solid #1a1a2e;
+  border-radius: 4px;
+  position: relative;
+  background: white;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-sketchy::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid rgba(26, 26, 46, 0.12);
+  border-radius: 5px;
+  transform: rotate(0.6deg) translate(3px, 3px);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.card-sketchy:hover {
+  transform: translateY(-3px) rotate(-0.3deg);
+  box-shadow: 5px 8px 0px #1a1a2e;
+}
+
+/* Doodle grid bg */
+.doodle-grid {
+  background-image: 
+    linear-gradient(rgba(108, 99, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(108, 99, 255, 0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Button sketch */
+.btn-sketch {
+  border: 2px solid #1a1a2e;
+  position: relative;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.btn-sketch::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid rgba(26, 26, 46, 0.25);
+  border-radius: inherit;
+  transform: rotate(0.8deg) translate(2px, 2px);
+  transition: transform 0.15s ease;
+}
+
+.btn-sketch:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0px #1a1a2e;
+}
+
+.btn-sketch:hover::after {
+  transform: rotate(1deg) translate(4px, 4px);
+}
+
+.btn-sketch:active {
+  transform: translate(0, 0);
+  box-shadow: 2px 2px 0px #1a1a2e;
+}
+
+/* Squiggly SVG text decoration */
+@keyframes float-y {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes float-y-delay {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes draw-in {
+  from { stroke-dashoffset: 600; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-float {
+  animation: float-y 3s ease-in-out infinite;
+}
+
+.animate-float-delay {
+  animation: float-y-delay 3.5s ease-in-out 0.5s infinite;
+}
+
+.animate-fade-up {
+  animation: fade-up 0.6s ease forwards;
+}
+
+.animate-fade-up-delay {
+  animation: fade-up 0.6s ease 0.2s forwards;
+  opacity: 0;
+}
+
+.animate-fade-up-delay-2 {
+  animation: fade-up 0.6s ease 0.4s forwards;
+  opacity: 0;
+}
