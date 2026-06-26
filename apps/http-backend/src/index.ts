@@ -133,7 +133,7 @@ app.get("/chats/:roomId",middleware,async (req:Request,res:Response)=>{
       where:{
         roomId
       },
-      take:50
+      take:50 //only take first 50 messages
     })
 
     res.status(200).json({
