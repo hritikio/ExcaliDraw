@@ -7,11 +7,14 @@ import dotenv from "dotenv";
 dotenv.config();
 import middleware from "./middleware";
 import bcrypt from "bcrypt"
+import cors from "cors"
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(express.json());
 
+app.use(express.json());
+app.use(cors({origin:"http://localhost:3000"}))
 app.get("/", (req: Request, res: Response) => {
   res.json({ message: "Server is running" });
 });
