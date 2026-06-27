@@ -5,15 +5,16 @@ dotenv.config();
 
 
 export default function middleware(req: Request, res: Response, next: NextFunction) {
-  const token= req.headers.authorization;
-  console.log(token)
-  if(!token){
+  const authHeader = req.headers.authorization;
+  console.log(authHeader)
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(403).json({
-        msg:"room cant be created"
+        msg: "room cant be created"
     })
   }
 
-  const decoded  = jwt.verify(token ,process.env.JWT_SECRET as string)as{userId:string} ;
+  const token = authHeader.split(" ")[1]!;
+  const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as unknown as { userId: string };
 
     console.log('decode in middleware is ',decoded )
 

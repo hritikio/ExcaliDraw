@@ -41,7 +41,7 @@ export function AuthPage({ isSignin }: { isSignin: boolean }) {
 
       if (isSignin && data.token) {
         localStorage.setItem("token", data.token);
-        router.push("/");
+        router.push("/canvas");
       } else if (!isSignin) {
         router.push("/signin");
       }

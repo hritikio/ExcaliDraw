@@ -34,6 +34,7 @@ function checkUser(token: string): string | null {
 }
 
 wss.on("connection", (ws: WebSocket, request) => {
+
   console.log("Client connected");
 
   const url = request.url;
@@ -65,11 +66,21 @@ wss.on("connection", (ws: WebSocket, request) => {
 
   // if decode is valid then let user enter ws backend
   ws.on("message", async (data) => {
+
     try {
-      const parsedData = JSON.parse(data as unknown as string); //    { type:"join_room"|"leave_room"|"chat",roomId:""iihuh,"message":"hello"}
+
+      let parsedData // = JSON.parse(data as unknown as string); //    { type:"join_room"|"leave_room"|"chat",roomId:""iihuh,"message":"hello"}
+      if(typeof data !=="string"){
+        parsedData=JSON.parse(data.toString());
+      }else{
+        parsedData=JSON.parse(data);
+      }
       if (parsedData.type === "join_room") {
-        const user = users.find((x) => x.ws === ws); // {userId:"anfbf",ws:websocket,room:"sjdj"}
-        user?.rooms.push(parsedData);
+        const user = users.find((x) => x.ws === ws);
+        const roomIdStr = String(parsedData.roomId);
+        if (user && !user.rooms.includes(roomIdStr)) {
+          user.rooms.push(roomIdStr);
+        }
         console.log(users);
       }
 
@@ -80,54 +91,52 @@ wss.on("connection", (ws: WebSocket, request) => {
       }
 
       if (parsedData.type === "chat") {
-        // if user send chat without joining room let him now join room
         const user = users.find((x) => x.ws === ws);
         if (!user) {
           return ws.close(1008, "user doesnt exist ");
         }
 
-        const roomId = parsedData.roomId;
+        const roomId = parseInt(parsedData.roomId, 10);
         const message = parsedData.message;
 
-        if (!user.rooms.includes(roomId)) {
-          user.rooms.push(roomId);
-          console.log(`User ${user.userId} auto-joined room ${roomId}`);
-          console.log("users array is ", users);
+        if (!user.rooms.includes(String(roomId))) {
+          user.rooms.push(String(roomId));
         }
-        await prismaClient.chat.create({
-          data:{
-            roomId,
-            message,
-            userId
-          }
-        })
+
+        // ✅ Broadcast to all room members FIRST — never block on DB
         users.forEach((u) => {
-          if (u.rooms.includes(roomId)) {
+          if (u.rooms.includes(String(roomId)) && u.ws.readyState === 1) {
             u.ws.send(
               JSON.stringify({
                 type: "chat",
                 message,
                 roomId,
-              }),
+              })
             );
           }
         });
+
+        // Save to DB in background — a failure won't interrupt real-time delivery
+        prismaClient.chat.create({
+          data: { roomId, message, userId },
+        }).catch((err: Error) => {
+          console.error("DB save failed (shape still broadcast):", err.message);
+        });
       }
 
-      ws.send(`${data} messaged recieved `);
     } catch (err) {
       console.error("Error handling message:", err);
-      ws.send(
-        JSON.stringify({
-          type: "error",
-          message: "Invalid message format",
-        }),
-      );
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: "error", message: "Invalid message format" }));
+      }
     }
   });
 
 
   ws.on("close", () => {
-    console.log("Closing webSocket Server");
+    // Remove this user from the pool so stale sockets are never broadcast to
+    const idx = users.findIndex((u) => u.ws === ws);
+    if (idx !== -1) users.splice(idx, 1);
+    console.log(`Client disconnected. Active connections: ${users.length}`);
   });
 });
