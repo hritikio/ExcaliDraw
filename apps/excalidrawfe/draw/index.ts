@@ -18,7 +18,27 @@ type Shape =
   | {
       type: "pencil";
       points: { x: number; y: number }[];
+    }
+  | {
+      type: "image";
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      dataUrl: string;
     };
+
+// ─── Image element cache (keyed by dataUrl) ───────────────────────────────────
+const imageCache = new Map<string, HTMLImageElement>();
+
+function loadImage(dataUrl: string, onReady: () => void): HTMLImageElement {
+  if (imageCache.has(dataUrl)) return imageCache.get(dataUrl)!;
+  const img = new Image();
+  img.onload = onReady;
+  img.src = dataUrl;
+  imageCache.set(dataUrl, img);
+  return img;
+}
 
 type CleanupFn = () => void;
 
@@ -77,7 +97,28 @@ export async function initDraw(
     window.__onVpChange?.(vp);
   };
 
-  let existingShapes: Shape[] = await getExistingShapes(roomId);
+  // Declare early so renderAll() is never called with it in the temporal dead zone
+  let existingShapes: Shape[] = [];
+  existingShapes = await getExistingShapes(roomId);
+
+  // ─── Undo / Redo stacks ───────────────────────────────────────────────────────────
+  let undoStack: Shape[] = []; // shapes removed by undo (can be redone)
+
+  // @ts-ignore
+  window.__undo = () => {
+    if (existingShapes.length === 0) return;
+    const shape = existingShapes.pop()!;
+    undoStack.push(shape);
+    renderAll();
+  };
+  // @ts-ignore
+  window.__redo = () => {
+    if (undoStack.length === 0) return;
+    const shape = undoStack.pop()!;
+    existingShapes.push(shape);
+    renderAll();
+  };
+
   renderAll();
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -95,7 +136,7 @@ export async function initDraw(
     ctx!.strokeStyle = "rgba(255,255,255,0.9)";
     ctx!.lineWidth = 2 / vp.scale;
 
-    existingShapes.forEach((shape) => drawShape(ctx!, shape));
+    existingShapes.forEach((shape) => drawShape(ctx!, shape, () => renderAll()));
 
     // Preview (shape being drawn right now)
     previewFn?.();
@@ -110,7 +151,12 @@ export async function initDraw(
       if (message.type === "chat") {
         const parsed = JSON.parse(message.message);
         if (parsed.shape) {
-          existingShapes.push(parsed.shape);
+          const incoming = parsed.shape;
+          // Pre-warm image cache for remote images before pushing
+          if (incoming.type === "image") {
+            loadImage(incoming.dataUrl, () => renderAll());
+          }
+          existingShapes.push(incoming);
           renderAll();
         }
       }
@@ -123,6 +169,10 @@ export async function initDraw(
   let panStartX = 0;
   let panStartY = 0;
   let panStartOffset = { x: 0, y: 0 };
+
+  // ─── Last known mouse position (screen coords) ───────────────────────────────
+  let lastMouseX = 0;
+  let lastMouseY = 0;
 
   // ─── Drawing state ───────────────────────────────────────────────────────────
   let isDrawing = false;
@@ -153,6 +203,9 @@ export async function initDraw(
 
   // ─── Mouse move ─────────────────────────────────────────────────────────────
   function onMouseMove(e: MouseEvent) {
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+
     if (isPanning) {
       vp = {
         ...vp,
@@ -237,6 +290,7 @@ export async function initDraw(
     if (!shape) return;
 
     existingShapes.push(shape);
+    undoStack = []; // clear redo history on new action
     renderAll();
 
     if (socket.readyState === WebSocket.OPEN) {
@@ -256,6 +310,74 @@ export async function initDraw(
     renderAll();
   }
 
+  // ─── Clipboard paste (Ctrl+V image) ────────────────────────────────────────
+  const MAX_PASTE_SIZE = 800; // max px on either axis in world units
+
+  async function onPaste(e: ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of Array.from(items)) {
+      if (!item.type.startsWith("image/")) continue;
+
+      const blob = item.getAsFile();
+      if (!blob) continue;
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        if (!dataUrl) return;
+
+        const img = new Image();
+        img.onload = () => {
+          // Target size in SCREEN pixels (constant visual size regardless of zoom)
+          const TARGET_SCREEN_PX = MAX_PASTE_SIZE;
+          let w = img.naturalWidth;
+          let h = img.naturalHeight;
+          const maxDim = Math.max(w, h);
+          // First fit to target screen size
+          if (maxDim > TARGET_SCREEN_PX) {
+            const ratio = TARGET_SCREEN_PX / maxDim;
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
+          }
+          // Convert screen px → world units so visual size stays constant at any zoom
+          w = w / vp.scale;
+          h = h / vp.scale;
+
+          // Place at cursor position in world space
+          const cx = toWorld(lastMouseX, lastMouseY, vp);
+          const shape: Shape = {
+            type: "image",
+            x: cx.x - w / 2,
+            y: cx.y - h / 2,
+            width: w,
+            height: h,
+            dataUrl,
+          };
+
+          // Pre-warm cache
+          loadImage(dataUrl, () => renderAll());
+
+          existingShapes.push(shape);
+          undoStack = []; // clear redo history on new paste
+          renderAll();
+
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(
+              JSON.stringify({ type: "chat", message: JSON.stringify({ shape }), roomId })
+            );
+          }
+        };
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(blob);
+      break; // only handle the first image item
+    }
+  }
+
+  window.addEventListener("paste", onPaste);
+
   canvas.addEventListener("mousedown", onMouseDown);
   canvas.addEventListener("mouseup", onMouseUp);
   canvas.addEventListener("mousemove", onMouseMove);
@@ -267,12 +389,21 @@ export async function initDraw(
     canvas.removeEventListener("mousemove", onMouseMove);
     canvas.removeEventListener("wheel", onWheel);
     socket.removeEventListener("message", onMessage);
+    window.removeEventListener("paste", onPaste);
+    // @ts-ignore
+    delete window.__undo;
+    // @ts-ignore
+    delete window.__redo;
   };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function drawShape(ctx: CanvasRenderingContext2D, shape: Shape) {
+function drawShape(
+  ctx: CanvasRenderingContext2D,
+  shape: Shape,
+  onImageLoaded?: () => void
+) {
   if (shape.type === "rect") {
     ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
   } else if (shape.type === "circle") {
@@ -281,6 +412,17 @@ function drawShape(ctx: CanvasRenderingContext2D, shape: Shape) {
     ctx.stroke();
   } else if (shape.type === "pencil") {
     drawPencilPoints(ctx, shape.points, ctx.lineWidth);
+  } else if (shape.type === "image") {
+    const img = loadImage(shape.dataUrl, () => onImageLoaded?.());
+    if (img.complete && img.naturalWidth > 0) {
+      ctx.drawImage(img, shape.x, shape.y, shape.width, shape.height);
+      // Subtle selection border so pasted images are visible on dark bg
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+      ctx.restore();
+    }
   }
 }
 

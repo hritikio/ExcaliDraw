@@ -5,10 +5,11 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 type Tool = "rect" | "circle" | "pencil" | "pan";
 
-const TOOLS: { id: Tool; label: string; icon: React.ReactNode }[] = [
+const TOOLS: { id: Tool; label: string; shortcut: string; icon: React.ReactNode }[] = [
   {
     id: "rect",
     label: "Rectangle",
+    shortcut: "R",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -18,6 +19,7 @@ const TOOLS: { id: Tool; label: string; icon: React.ReactNode }[] = [
   {
     id: "circle",
     label: "Circle",
+    shortcut: "C",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="9" />
@@ -27,6 +29,7 @@ const TOOLS: { id: Tool; label: string; icon: React.ReactNode }[] = [
   {
     id: "pencil",
     label: "Pencil",
+    shortcut: "P",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
@@ -35,7 +38,8 @@ const TOOLS: { id: Tool; label: string; icon: React.ReactNode }[] = [
   },
   {
     id: "pan",
-    label: "Pan (drag canvas)",
+    label: "Pan",
+    shortcut: "H",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2" />
@@ -95,6 +99,39 @@ export function Canvas({
     };
   }, [canvasRef, dimensions, roomId, socket]);
 
+  // ── Global keyboard shortcuts ────────────────────────────────────────────
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      // Don't fire when typing in an input/textarea
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) return;
+
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "z") {
+          e.preventDefault();
+          // @ts-ignore
+          window.__undo?.();
+        } else if (e.key === "y") {
+          e.preventDefault();
+          // @ts-ignore
+          window.__redo?.();
+        }
+        return;
+      }
+
+      switch (e.key.toLowerCase()) {
+        case "r": setSelectedTool("rect"); break;
+        case "c": setSelectedTool("circle"); break;
+        case "p": setSelectedTool("pencil"); break;
+        case "h": setSelectedTool("pan"); break;
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   // ── Zoom button helpers ────────────────────────────────────────────────────
   const zoomBy = useCallback((factor: number) => {
     // @ts-ignore
@@ -147,7 +184,7 @@ export function Canvas({
         />
       )}
 
-      {/* ── Left toolbar (drawing tools) ── */}
+      {/* ── Left toolbar (drawing tools + undo/redo) ── */}
       <div
         style={{
           position: "fixed",
@@ -156,7 +193,7 @@ export function Canvas({
           transform: "translateY(-50%)",
           display: "flex",
           flexDirection: "column",
-          gap: "6px",
+          gap: "4px",
           background: "rgba(22, 22, 32, 0.92)",
           backdropFilter: "blur(12px)",
           border: "1px solid rgba(255,255,255,0.08)",
@@ -166,13 +203,21 @@ export function Canvas({
           zIndex: 100,
         }}
       >
+        {/* Tool buttons */}
         {TOOLS.map((tool) => (
           <button
             key={tool.id}
             id={`tool-${tool.id}`}
-            title={tool.label}
+            title={`${tool.label} (${tool.shortcut})`}
             onClick={() => setSelectedTool(tool.id)}
-            style={btnStyle(selectedTool === tool.id)}
+            style={{
+              ...btnStyle(selectedTool === tool.id),
+              width: "44px",
+              height: "40px",
+              flexDirection: "column",
+              gap: "1px",
+              position: "relative",
+            }}
             onMouseEnter={(e) => {
               if (selectedTool !== tool.id)
                 (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)";
@@ -183,8 +228,51 @@ export function Canvas({
             }}
           >
             {tool.icon}
+            <span style={{
+              fontSize: "8px",
+              fontFamily: "monospace",
+              color: selectedTool === tool.id ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)",
+              lineHeight: 1,
+            }}>{tool.shortcut}</span>
           </button>
         ))}
+
+        {/* Divider */}
+        <div style={{ height: "1px", background: "rgba(255,255,255,0.08)", margin: "4px 0" }} />
+
+        {/* Undo */}
+        <button
+          id="tool-undo"
+          title="Undo (Ctrl+Z)"
+          // @ts-ignore
+          onClick={() => window.__undo?.()}
+          style={{ ...btnStyle(), width: "44px", flexDirection: "column", gap: "1px" }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "transparent")}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 7v6h6" />
+            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+          </svg>
+          <span style={{ fontSize: "8px", fontFamily: "monospace", color: "rgba(255,255,255,0.3)", lineHeight: 1 }}>⌘Z</span>
+        </button>
+
+        {/* Redo */}
+        <button
+          id="tool-redo"
+          title="Redo (Ctrl+Y)"
+          // @ts-ignore
+          onClick={() => window.__redo?.()}
+          style={{ ...btnStyle(), width: "44px", flexDirection: "column", gap: "1px" }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "transparent")}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 7v6h-6" />
+            <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
+          </svg>
+          <span style={{ fontSize: "8px", fontFamily: "monospace", color: "rgba(255,255,255,0.3)", lineHeight: 1 }}>⌘Y</span>
+        </button>
       </div>
 
       {/* ── Zoom controls (bottom-right) ── */}
