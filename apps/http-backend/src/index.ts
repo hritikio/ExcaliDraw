@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3001;
 
 
 app.use(express.json());
-app.use(cors({origin:"http://localhost:3000"}))
+app.use(cors({origin:["http://localhost:3000","http://localhost:3002"]}))
 app.get("/", (req: Request, res: Response) => {
   res.json({ message: "Server is running" });
 });

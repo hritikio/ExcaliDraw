@@ -1,7 +1,7 @@
 "use client";
 
 import { initDraw } from "@/draw";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 type Tool = "rect" | "circle" | "pencil" | "pan";
 
@@ -35,7 +35,7 @@ const TOOLS: { id: Tool; label: string; icon: React.ReactNode }[] = [
   },
   {
     id: "pan",
-    label: "Pan",
+    label: "Pan (drag canvas)",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2" />
@@ -56,6 +56,7 @@ export function Canvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedTool, setSelectedTool] = useState<Tool>("rect");
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [scale, setScale] = useState(1);
 
   // Set canvas dimensions client-side only
   useEffect(() => {
@@ -73,6 +74,18 @@ export function Canvas({
     window.selectedTool = selectedTool;
   }, [selectedTool]);
 
+  // Receive viewport changes from draw engine and update scale badge
+  useEffect(() => {
+    // @ts-ignore
+    window.__onVpChange = (vp: { scale: number }) => {
+      setScale(vp.scale);
+    };
+    return () => {
+      // @ts-ignore
+      window.__onVpChange = undefined;
+    };
+  }, []);
+
   // Initialise draw engine after canvas is sized
   useEffect(() => {
     if (!canvasRef.current || dimensions.width === 0) return;
@@ -82,8 +95,48 @@ export function Canvas({
     };
   }, [canvasRef, dimensions, roomId, socket]);
 
+  // ── Zoom button helpers ────────────────────────────────────────────────────
+  const zoomBy = useCallback((factor: number) => {
+    // @ts-ignore
+    const vp = window.__vp;
+    // @ts-ignore
+    const setVp = window.__setVp;
+    if (!vp || !setVp) return;
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    const newScale = Math.min(20, Math.max(0.05, vp.scale * factor));
+    const ratio = newScale / vp.scale;
+    setVp({
+      scale: newScale,
+      offsetX: cx - ratio * (cx - vp.offsetX),
+      offsetY: cy - ratio * (cy - vp.offsetY),
+    });
+  }, []);
+
+  const resetZoom = useCallback(() => {
+    // @ts-ignore
+    const setVp = window.__setVp;
+    if (!setVp) return;
+    setVp({ offsetX: 0, offsetY: 0, scale: 1 });
+  }, []);
+
+  const btnStyle = (active = false): React.CSSProperties => ({
+    width: "40px",
+    height: "40px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "8px",
+    border: "none",
+    cursor: "pointer",
+    transition: "background 0.15s, color 0.15s, transform 0.1s",
+    background: active ? "rgba(108, 99, 255, 0.9)" : "transparent",
+    color: active ? "#fff" : "rgba(255,255,255,0.55)",
+    transform: active ? "scale(1.1)" : "scale(1)",
+  });
+
   return (
-    <div style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden", background: "#000" }}>
+    <div style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden", background: "#0d0d12" }}>
       {/* Canvas */}
       {dimensions.width > 0 && (
         <canvas
@@ -94,7 +147,7 @@ export function Canvas({
         />
       )}
 
-      {/* Toolbar */}
+      {/* ── Left toolbar (drawing tools) ── */}
       <div
         style={{
           position: "fixed",
@@ -119,32 +172,14 @@ export function Canvas({
             id={`tool-${tool.id}`}
             title={tool.label}
             onClick={() => setSelectedTool(tool.id)}
-            style={{
-              width: "40px",
-              height: "40px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: "8px",
-              border: "none",
-              cursor: "pointer",
-              transition: "background 0.15s, color 0.15s, transform 0.1s",
-              background:
-                selectedTool === tool.id
-                  ? "rgba(108, 99, 255, 0.9)"
-                  : "transparent",
-              color: selectedTool === tool.id ? "#fff" : "rgba(255,255,255,0.55)",
-              transform: selectedTool === tool.id ? "scale(1.1)" : "scale(1)",
-            }}
+            style={btnStyle(selectedTool === tool.id)}
             onMouseEnter={(e) => {
               if (selectedTool !== tool.id)
-                (e.currentTarget as HTMLButtonElement).style.background =
-                  "rgba(255,255,255,0.08)";
+                (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)";
             }}
             onMouseLeave={(e) => {
               if (selectedTool !== tool.id)
-                (e.currentTarget as HTMLButtonElement).style.background =
-                  "transparent";
+                (e.currentTarget as HTMLButtonElement).style.background = "transparent";
             }}
           >
             {tool.icon}
@@ -152,7 +187,84 @@ export function Canvas({
         ))}
       </div>
 
-      {/* Room ID badge */}
+      {/* ── Zoom controls (bottom-right) ── */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: "24px",
+          right: "24px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "4px",
+          background: "rgba(22, 22, 32, 0.92)",
+          backdropFilter: "blur(12px)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "14px",
+          padding: "8px 8px",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+          zIndex: 100,
+        }}
+      >
+        {/* Zoom in */}
+        <button
+          id="zoom-in"
+          title="Zoom in"
+          onClick={() => zoomBy(1.2)}
+          style={btnStyle()}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "transparent")}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            <line x1="11" y1="8" x2="11" y2="14" />
+            <line x1="8" y1="11" x2="14" y2="11" />
+          </svg>
+        </button>
+
+        {/* Scale badge — click to reset to 100% */}
+        <button
+          id="zoom-reset"
+          title="Reset zoom to 100%"
+          onClick={resetZoom}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "rgba(255,255,255,0.45)",
+            fontSize: "10px",
+            fontFamily: "monospace",
+            fontWeight: 700,
+            padding: "2px 4px",
+            borderRadius: "4px",
+            transition: "color 0.15s",
+            whiteSpace: "nowrap",
+          }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "#a29bfe")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.45)")}
+        >
+          {Math.round(scale * 100)}%
+        </button>
+
+        {/* Zoom out */}
+        <button
+          id="zoom-out"
+          title="Zoom out"
+          onClick={() => zoomBy(1 / 1.2)}
+          style={btnStyle()}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)")}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = "transparent")}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            <line x1="8" y1="11" x2="14" y2="11" />
+          </svg>
+        </button>
+      </div>
+
+      {/* ── Room ID badge ── */}
       <div
         style={{
           position: "fixed",
@@ -202,7 +314,7 @@ export function Canvas({
         </button>
       </div>
 
-      {/* Selected tool hint */}
+      {/* ── Active tool hint ── */}
       <div
         style={{
           position: "fixed",
@@ -222,7 +334,7 @@ export function Canvas({
           pointerEvents: "none",
         }}
       >
-        {TOOLS.find((t) => t.id === selectedTool)?.label} tool active · drag to draw
+        {TOOLS.find((t) => t.id === selectedTool)?.label} · scroll to zoom · middle-drag to pan
       </div>
     </div>
   );
